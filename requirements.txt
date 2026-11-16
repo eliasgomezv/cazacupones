@@ -1,1 +1,2 @@
 twscrape>=0.21
+pywebpush>=2.0

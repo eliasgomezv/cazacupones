@@ -6,7 +6,7 @@ Pensado para correr en GitHub Actions (ver .github/workflows/buscar.yml),
 pero funciona en cualquier PC con Python 3.10+:
 
     pip install -r requirements.txt
-    X_COOKIES="auth_token=...; ct0=..." NTFY_TOPIC="mi-tema" python buscar.py
+    X_COOKIES="auth_token=...; ct0=..." WEBPUSH='{...}' python buscar.py
 
 Opciones:
     --prueba    manda una notificación de prueba y termina.
@@ -414,45 +414,79 @@ def _post_json(url: str, datos: dict, headers: dict | None = None) -> None:
         r.read()
 
 
+def suscripciones_push() -> list[dict]:
+    """Lee el secreto WEBPUSH: lo que muestra la web al tocar 'Activar notificaciones'.
+    Puede ser uno solo o una lista [ {...}, {...} ] para varios celulares."""
+    crudo = os.environ.get("WEBPUSH", "").strip()
+    if not crudo:
+        return []
+    try:
+        datos = json.loads(crudo)
+    except json.JSONDecodeError:
+        aviso_actions("error", "El secreto WEBPUSH no es un texto válido: copialo de nuevo desde la web.")
+        return []
+    lista = datos if isinstance(datos, list) else [datos]
+    validas = [
+        d for d in lista
+        if isinstance(d, dict) and d.get("clave") and (d.get("suscripcion") or {}).get("endpoint")
+    ]
+    if len(validas) < len(lista):
+        aviso_actions("warning", "Alguna entrada del secreto WEBPUSH está incompleta y se ignora.")
+    return validas
+
+
 def canales_configurados() -> list[str]:
     canales = []
-    if os.environ.get("NTFY_TOPIC", "").strip():
-        canales.append("ntfy")
+    if suscripciones_push():
+        canales.append("web push")
     if os.environ.get("TELEGRAM_TOKEN", "").strip() and os.environ.get("TELEGRAM_CHAT_ID", "").strip():
         canales.append("telegram")
     return canales
 
 
+def enviar_push(titulo: str, mensaje: str, url: str | None, prioridad: int) -> bool:
+    subs = suscripciones_push()
+    if not subs:
+        return False
+    from pywebpush import WebPushException, webpush
+
+    pagina = url_pagina()
+    contacto = "mailto:cazacupones@users.noreply.github.com"  # Apple exige un mailto: o https válido
+    carga = json.dumps(
+        {"title": titulo, "body": mensaje, "url": url or pagina or "/"}, ensure_ascii=False
+    )
+    algun_ok = False
+    for s in subs:
+        nombre = s.get("dispositivo") or "celular"
+        try:
+            webpush(
+                s["suscripcion"],
+                carga,
+                vapid_private_key=s["clave"],
+                vapid_claims={"sub": contacto},
+                ttl=6 * 3600,
+                headers={"Urgency": "high" if prioridad >= 4 else "normal"},
+                timeout=20,
+            )
+            algun_ok = True
+        except WebPushException as e:
+            codigo = getattr(e.response, "status_code", None)
+            if codigo in (404, 410):
+                aviso_actions(
+                    "error",
+                    f"La suscripción de «{nombre}» venció. Abrí la web desde el ícono de inicio, "
+                    "tocá 'Activar notificaciones' y actualizá el secreto WEBPUSH.",
+                )
+            else:
+                aviso_actions("warning", f"No se pudo avisar a «{nombre}»: {e}")
+        except Exception as e:  # noqa: BLE001
+            aviso_actions("warning", f"No se pudo avisar a «{nombre}»: {e}")
+    return algun_ok
+
+
 def notificar(titulo: str, mensaje: str, url: str | None, prioridad: int, etiquetas: list[str]) -> bool:
     """Manda a todos los canales configurados. Devuelve True si al menos uno funcionó."""
-    algun_ok = False
-    tema = os.environ.get("NTFY_TOPIC", "").strip()
-    if tema:
-        servidor = (os.environ.get("NTFY_SERVER") or "https://ntfy.sh").strip().rstrip("/")
-        cuerpo = {
-            "topic": tema,
-            "title": titulo,
-            "message": mensaje,
-            "priority": prioridad,
-            "tags": etiquetas,
-        }
-        acciones = []
-        if url:
-            cuerpo["click"] = url
-            acciones.append({"action": "view", "label": "Abrir en X", "url": url})
-        pagina = url_pagina()
-        if pagina:
-            acciones.append({"action": "view", "label": "Ver todos", "url": pagina})
-        if acciones:
-            cuerpo["actions"] = acciones
-        headers = {}
-        if os.environ.get("NTFY_TOKEN"):
-            headers["Authorization"] = f"Bearer {os.environ['NTFY_TOKEN']}"
-        try:
-            _post_json(servidor, cuerpo, headers)
-            algun_ok = True
-        except Exception as e:  # noqa: BLE001
-            aviso_actions("warning", f"No se pudo enviar a ntfy: {e}")
+    algun_ok = enviar_push(titulo, mensaje, url, prioridad)
 
     token = os.environ.get("TELEGRAM_TOKEN", "").strip()
     chat = os.environ.get("TELEGRAM_CHAT_ID", "").strip()
@@ -507,7 +541,7 @@ def main() -> int:
     if not canales_configurados():
         aviso_actions(
             "warning",
-            "No hay canal de notificación: cargá NTFY_TOPIC (o TELEGRAM_TOKEN y TELEGRAM_CHAT_ID).",
+            "No hay canal de notificación: cargá WEBPUSH (o TELEGRAM_TOKEN y TELEGRAM_CHAT_ID).",
         )
 
     if "--prueba" in sys.argv:
