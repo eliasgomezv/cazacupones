@@ -279,6 +279,23 @@ def armar_consultas(busqueda: dict, cfg: dict, fuente: str) -> list[str]:
 async def buscar_con_cookies(busquedas: list[dict], cfg: dict) -> tuple[dict, list[str]]:
     """Fuente gratuita: usa la sesión de una cuenta de X (cookies auth_token y ct0)."""
     from twscrape import API, NoAccountError
+    from twscrape.queue_client import QueueClient
+
+    # Diagnóstico: si X responde con error, mostrar qué dijo (twscrape solo muestra el código).
+    if not getattr(QueueClient, "_cazacupones_diag", False):
+        original = QueueClient._check_rep
+
+        async def check_con_diagnostico(self, rep):
+            if rep.status_code >= 400:
+                cuerpo = (rep.text or "")[:400].replace("\n", " ")
+                aviso_actions(
+                    "warning",
+                    f"Respuesta de X: {rep.status_code} {rep.headers.get('content-type', '')} → {cuerpo}",
+                )
+            return await original(self, rep)
+
+        QueueClient._check_rep = check_con_diagnostico
+        QueueClient._cazacupones_diag = True
 
     cookies = os.environ.get("X_COOKIES", "").strip()
     if not cookies:
