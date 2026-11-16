@@ -4,7 +4,12 @@
     {
       "nombre": "Cupones",
       "activa": true,
-      "perfiles": [],
+      "perfiles": [
+        "vmenditto",
+        "calamardoPobre",
+		"AhorrandoAndoAr"
+		""
+      ],
       "consulta": "(cupon OR cupón OR cupones)",
       "debe_contener_alguna": [],
       "excluir": []
@@ -14,7 +19,9 @@
       "activa": false,
       "consulta": "(cupon OR cupón OR cupones) (5000 OR \"5.000\")",
       "debe_contener_alguna": [],
-      "excluir": ["sorteo"]
+      "excluir": [
+        "sorteo"
+      ]
     }
   ],
   "solo_espanol": false,
