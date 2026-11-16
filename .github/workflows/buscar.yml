@@ -39,9 +39,7 @@ jobs:
           X_COOKIES: ${{ secrets.X_COOKIES }}
           X_USUARIO: ${{ secrets.X_USUARIO }}
           X_BEARER_TOKEN: ${{ secrets.X_BEARER_TOKEN }}
-          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
-          NTFY_SERVER: ${{ secrets.NTFY_SERVER }}
-          NTFY_TOKEN: ${{ secrets.NTFY_TOKEN }}
+          WEBPUSH: ${{ secrets.WEBPUSH }}
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
