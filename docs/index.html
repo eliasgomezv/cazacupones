@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="es-AR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f4f1ea" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#15140f" media="(prefers-color-scheme: dark)">
+  <meta name="robots" content="noindex">
+  <title>Cazacupones</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>✂️</text></svg>">
+  <style>
+    :root {
+      --bg: #f4f1ea; --card: #fffdf8; --ink: #1d1b16; --muted: #6f6a5f;
+      --line: #e4ddcf; --accent: #c8431f; --accent-soft: #fde7df; --on-accent: #fff; --ok: #2f7d4f;
+      --mono: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", Menlo, monospace;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #15140f; --card: #1f1d17; --ink: #f1ece0; --muted: #a39d8e;
+        --line: #343028; --accent: #ff7a54; --accent-soft: #3a2219; --on-accent: #1e0f08; --ok: #6fcf97;
+      }
+    }
+    * { box-sizing: border-box; }
+    html { -webkit-text-size-adjust: 100%; }
+    body {
+      margin: 0; background: var(--bg); color: var(--ink);
+      font: 16px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      padding: max(16px, env(safe-area-inset-top)) 16px max(24px, env(safe-area-inset-bottom));
+    }
+    .contenedor { max-width: 640px; margin: 0 auto; }
+
+    header { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; margin: 8px 0 14px; }
+    h1 { margin: 0; font-size: 28px; letter-spacing: -0.02em; line-height: 1.05; }
+    h1 span { color: var(--accent); }
+    .estado { margin: 4px 0 0; color: var(--muted); font-size: 14px; }
+    .recargar {
+      border: 1px solid var(--line); background: var(--card); color: var(--ink);
+      border-radius: 999px; padding: 8px 14px; font: inherit; font-size: 14px; cursor: pointer; flex: none;
+    }
+    .recargar:active { transform: scale(.97); }
+
+    .filtros { display: flex; gap: 8px; overflow-x: auto; padding: 2px 0 12px; scrollbar-width: none; }
+    .filtros::-webkit-scrollbar { display: none; }
+    .filtro {
+      flex: none; border: 1px solid var(--line); background: transparent; color: var(--ink);
+      border-radius: 999px; padding: 6px 12px; font: inherit; font-size: 14px; cursor: pointer;
+    }
+    .filtro[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+    .filtro small { opacity: .7; margin-left: 4px; }
+
+    .cupon {
+      position: relative; background: var(--card); border: 1px solid var(--line);
+      border-radius: 14px; margin: 0 0 12px; overflow: hidden;
+    }
+    .cupon.nuevo { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+    .cuerpo { padding: 14px 16px 12px; }
+    .meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; font-size: 13px; color: var(--muted); margin-bottom: 8px; }
+    .chip { background: var(--accent-soft); color: var(--accent); font-weight: 600; border-radius: 6px; padding: 2px 8px; }
+    .badge { background: var(--accent); color: var(--on-accent); font-weight: 700; font-size: 11px; letter-spacing: .04em; text-transform: uppercase; border-radius: 6px; padding: 2px 6px; }
+    .usuario { color: var(--ink); font-weight: 600; }
+    .texto { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .texto a { color: var(--accent); }
+    .texto mark { background: var(--accent-soft); color: inherit; border-radius: 3px; padding: 0 2px; font-family: var(--mono); font-size: .95em; }
+
+    .talon { position: relative; border-top: 2px dashed var(--line); padding: 10px 16px 12px; display: grid; gap: 8px; }
+    .talon::before, .talon::after {
+      content: ""; position: absolute; top: -9px; width: 16px; height: 16px; border-radius: 50%;
+      background: var(--bg); border: 1px solid var(--line);
+    }
+    .talon::before { left: -9px; } .talon::after { right: -9px; }
+    .codigo { display: flex; align-items: center; gap: 10px; }
+    .codigo code {
+      font-family: var(--mono); font-size: 17px; font-weight: 700; letter-spacing: .06em;
+      border: 1.5px dashed var(--accent); color: var(--accent); border-radius: 8px; padding: 4px 10px;
+    }
+    .codigo .etq { font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+    .boton {
+      border: 0; border-radius: 10px; padding: 9px 14px; font: inherit; font-size: 14px; font-weight: 600;
+      cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; justify-content: center;
+    }
+    .copiar { background: var(--ink); color: var(--bg); margin-left: auto; }
+    .copiar.ok { background: var(--ok); color: #fff; }
+    .abrir { background: var(--accent); color: var(--on-accent); width: 100%; }
+
+    .vacio { text-align: center; color: var(--muted); padding: 48px 12px; border: 2px dashed var(--line); border-radius: 14px; }
+    .vacio strong { display: block; color: var(--ink); font-size: 18px; margin-bottom: 6px; }
+    footer { color: var(--muted); font-size: 13px; text-align: center; margin-top: 20px; }
+  </style>
+</head>
+<body>
+<div class="contenedor">
+  <header>
+    <div>
+      <h1>Caza<span>cupones</span></h1>
+      <p class="estado" id="estado">Cargando…</p>
+    </div>
+    <button class="recargar" id="recargar" type="button">Actualizar</button>
+  </header>
+
+  <nav class="filtros" id="filtros" aria-label="Filtrar por búsqueda"></nav>
+  <main id="lista"></main>
+
+  <footer>Las búsquedas corren cada ~10 minutos · esta página se actualiza sola</footer>
+</div>
+
+<script>
+  const MIN_NUEVO = 30;            // minutos en que un post se marca como "nuevo"
+  const RECARGA_MS = 2 * 60 * 1000;
+
+  let datos = { actualizado: null, items: [] };
+  let filtro = "Todos";
+
+  const $ = (id) => document.getElementById(id);
+  const rtf = new Intl.RelativeTimeFormat("es-AR", { numeric: "auto" });
+
+  function haceCuanto(iso) {
+    if (!iso) return "";
+    const seg = (new Date(iso) - Date.now()) / 1000;
+    const abs = Math.abs(seg);
+    if (abs < 60) return "recién";
+    if (abs < 3600) return rtf.format(Math.round(seg / 60), "minute");
+    if (abs < 86400) return rtf.format(Math.round(seg / 3600), "hour");
+    return rtf.format(Math.round(seg / 86400), "day");
+  }
+
+  function escapar(t) {
+    return String(t ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  }
+
+  function textoConFormato(texto, codigos) {
+    let html = escapar(texto).replace(/https?:\/\/[^\s<]+/g, (u) => `<a href="${u}" target="_blank" rel="noopener">${u}</a>`);
+    for (const c of codigos || []) {
+      if (!/^[A-Za-z0-9]+$/.test(c)) continue;
+      const re = new RegExp("(^|[^\\w/])(" + c + ")(?![\\w/])", "g");
+      html = html.replace(re, "$1<mark>$2</mark>");
+    }
+    return html;
+  }
+
+  function enlaceSeguro(url) {
+    return /^https:\/\/(x|twitter)\.com\//.test(url || "") ? url : "#";
+  }
+
+  function pintarFiltros() {
+    const conteo = {};
+    for (const it of datos.items) conteo[it.busqueda] = (conteo[it.busqueda] || 0) + 1;
+    const nombres = ["Todos", ...Object.keys(conteo)];
+    if (!nombres.includes(filtro)) filtro = "Todos";
+    $("filtros").innerHTML = nombres.length > 2 || filtro !== "Todos"
+      ? nombres.map((n) => {
+          const cant = n === "Todos" ? datos.items.length : conteo[n];
+          return `<button class="filtro" type="button" data-f="${escapar(n)}" aria-pressed="${n === filtro}">${escapar(n)}<small>${cant}</small></button>`;
+        }).join("")
+      : "";
+  }
+
+  function pintarLista() {
+    const items = datos.items.filter((it) => filtro === "Todos" || it.busqueda === filtro);
+    if (!items.length) {
+      $("lista").innerHTML = `<div class="vacio"><strong>Todavía no hay hallazgos</strong>
+        Cuando alguien publique algo que coincida con tus búsquedas, aparece acá y te llega al celular.</div>`;
+      return;
+    }
+    $("lista").innerHTML = items.map((it) => {
+      const nuevo = (Date.now() - new Date(it.fecha)) / 60000 < MIN_NUEVO;
+      const codigos = (it.codigos || []).map((c) => `
+        <div class="codigo">
+          <div><div class="etq">Posible código</div><code>${escapar(c)}</code></div>
+          <button class="boton copiar" type="button" data-codigo="${escapar(c)}">Copiar</button>
+        </div>`).join("");
+      return `
+        <article class="cupon${nuevo ? " nuevo" : ""}">
+          <div class="cuerpo">
+            <div class="meta">
+              ${nuevo ? '<span class="badge">Nuevo</span>' : ""}
+              <span class="chip">${escapar(it.busqueda)}</span>
+              ${it.usuario ? `<span class="usuario">@${escapar(it.usuario)}</span>` : ""}
+              <time datetime="${escapar(it.fecha)}" title="${new Date(it.fecha).toLocaleString("es-AR")}">${haceCuanto(it.fecha)}</time>
+            </div>
+            <p class="texto">${textoConFormato(it.texto, it.codigos)}</p>
+          </div>
+          <div class="talon">
+            ${codigos}
+            <a class="boton abrir" href="${escapar(enlaceSeguro(it.url))}" target="_blank" rel="noopener">Abrir en X</a>
+          </div>
+        </article>`;
+    }).join("");
+  }
+
+  function pintarEstado() {
+    const n = datos.items.length;
+    $("estado").textContent = datos.actualizado
+      ? `Último hallazgo ${haceCuanto(datos.actualizado)} · ${n} guardado${n === 1 ? "" : "s"}`
+      : "Esperando el primer hallazgo";
+  }
+
+  function pintar() { pintarEstado(); pintarFiltros(); pintarLista(); }
+
+  async function cargar() {
+    try {
+      const r = await fetch(`resultados.json?t=${Date.now()}`, { cache: "no-store" });
+      if (!r.ok) throw new Error(r.status);
+      datos = await r.json();
+      datos.items = datos.items || [];
+      pintar();
+    } catch (e) {
+      $("estado").textContent = "No se pudieron cargar los resultados. Probá de nuevo en un rato.";
+    }
+  }
+
+  async function copiar(texto, boton) {
+    try {
+      await navigator.clipboard.writeText(texto);
+    } catch {
+      const ta = document.createElement("textarea");
+      ta.value = texto; ta.style.position = "fixed"; ta.style.opacity = "0";
+      document.body.appendChild(ta); ta.select(); document.execCommand("copy"); ta.remove();
+    }
+    boton.textContent = "¡Copiado!"; boton.classList.add("ok");
+    setTimeout(() => { boton.textContent = "Copiar"; boton.classList.remove("ok"); }, 1600);
+  }
+
+  document.addEventListener("click", (e) => {
+    const f = e.target.closest(".filtro");
+    if (f) { filtro = f.dataset.f; pintarFiltros(); pintarLista(); return; }
+    const c = e.target.closest(".copiar");
+    if (c) copiar(c.dataset.codigo, c);
+  });
+  $("recargar").addEventListener("click", cargar);
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) cargar(); });
+  setInterval(cargar, RECARGA_MS);
+  setInterval(pintar, 60 * 1000);
+  cargar();
+</script>
+</body>
+</html>
