@@ -1,6 +1,11 @@
 {
   "since_id": {},
-  "vistos": [],
-  "fallas_seguidas": 1,
+  "vistos": [
+    "2122317572313858147",
+    "2122323233202381117",
+    "2122326573688750107",
+    "2122336134537556110"
+  ],
+  "fallas_seguidas": 0,
   "ultimo_aviso_error": null
 }
