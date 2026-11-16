@@ -1,0 +1,4 @@
+.twscrape.db*
+__pycache__/
+*.tmp
+.env
