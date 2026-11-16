@@ -19,6 +19,8 @@ os.environ.setdefault("TWS_TELEMETRY", "0")  # twscrape: sin telemetría
 
 import asyncio
 import json
+import random
+import time
 import re
 import sys
 import unicodedata
@@ -28,6 +30,7 @@ import urllib.request
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 RAIZ = Path(__file__).resolve().parent
 ARCHIVO_CONFIG = RAIZ / "config.json"
@@ -51,6 +54,9 @@ CONFIG_POR_DEFECTO = {
     "max_resultados_por_busqueda": 25,
     "max_notificaciones_por_ejecucion": 8,
     "prioridad_notificacion": 4,
+    "demora_al_azar_segundos": 240,
+    "horario_descanso": {"desde": "02:00", "hasta": "07:00"},
+    "zona_horaria": "America/Argentina/Buenos_Aires",
 }
 
 
@@ -142,6 +148,49 @@ def url_pagina() -> str | None:
         usuario, nombre = repo.split("/", 1)
         return f"https://{usuario.lower()}.github.io/{nombre}/"
     return None
+
+
+# ------------------------------------------------------------ horario de descanso
+
+
+def _hora(texto: str) -> tuple[int, int]:
+    h, m = str(texto).strip().split(":")
+    return int(h), int(m)
+
+
+def minutos_desde_medianoche(dt: datetime) -> int:
+    return dt.hour * 60 + dt.minute
+
+
+def en_descanso(cfg: dict, momento: datetime | None = None) -> bool:
+    d = cfg.get("horario_descanso") or {}
+    if not d.get("desde") or not d.get("hasta"):
+        return False
+    local = (momento or ahora()).astimezone(ZoneInfo(cfg["zona_horaria"]))
+    ahora_min = minutos_desde_medianoche(local)
+    desde = _hora(d["desde"])[0] * 60 + _hora(d["desde"])[1]
+    hasta = _hora(d["hasta"])[0] * 60 + _hora(d["hasta"])[1]
+    if desde <= hasta:
+        return desde <= ahora_min < hasta
+    return ahora_min >= desde or ahora_min < hasta  # franja que cruza la medianoche
+
+
+def antiguedad_efectiva(cfg: dict, momento: datetime | None = None) -> int:
+    """Minutos hacia atrás a revisar. En la primera hora después del descanso se amplía
+    para cubrir todo lo publicado mientras la app no buscaba."""
+    base = int(cfg["antiguedad_maxima_minutos"])
+    d = cfg.get("horario_descanso") or {}
+    if not d.get("desde") or not d.get("hasta"):
+        return base
+    local = (momento or ahora()).astimezone(ZoneInfo(cfg["zona_horaria"]))
+    ahora_min = minutos_desde_medianoche(local)
+    desde = _hora(d["desde"])[0] * 60 + _hora(d["desde"])[1]
+    hasta = _hora(d["hasta"])[0] * 60 + _hora(d["hasta"])[1]
+    despues = (ahora_min - hasta) % 1440
+    if despues < 60:
+        duracion = (hasta - desde) % 1440
+        return max(base, duracion + despues + base)
+    return base
 
 
 # ------------------------------------------------------------ posibles códigos
@@ -320,7 +369,7 @@ def buscar_con_api(busquedas: list[dict], cfg: dict, estado: dict) -> tuple[dict
             if since and fecha_de_id(since) > ahora() - timedelta(days=6, hours=20):
                 params["since_id"] = since
             else:
-                minutos = int(cfg["antiguedad_maxima_minutos"])
+                minutos = antiguedad_efectiva(cfg)
                 params["start_time"] = a_iso(ahora() - timedelta(minutes=minutos))
 
             try:
@@ -379,7 +428,7 @@ def buscar_con_api(busquedas: list[dict], cfg: dict, estado: dict) -> tuple[dict
 
 
 def filtrar(posts: list[Post], busqueda: dict, cfg: dict, vistos: set[str]) -> list[Post]:
-    limite = ahora() - timedelta(minutes=int(cfg["antiguedad_maxima_minutos"]))
+    limite = ahora() - timedelta(minutes=antiguedad_efectiva(cfg))
     requeridas = busqueda.get("debe_contener_alguna") or []
     excluidas = busqueda.get("excluir") or []
     aceptados = []
@@ -554,6 +603,17 @@ def main() -> int:
         )
         print("Notificación de prueba enviada." if ok else "No se pudo enviar la notificación.")
         return 0 if ok else 1
+
+    if en_descanso(cfg):
+        d = cfg["horario_descanso"]
+        print(f"Horario de descanso ({d['desde']} a {d['hasta']}): no se busca.")
+        return 0
+
+    demora = int(cfg.get("demora_al_azar_segundos") or 0)
+    if demora > 0 and os.environ.get("GITHUB_ACTIONS"):
+        espera = random.randint(0, demora)
+        print(f"Esperando {espera} s para no buscar siempre en el mismo segundo…")
+        time.sleep(espera)
 
     busquedas = []
     for b in cfg["busquedas"]:

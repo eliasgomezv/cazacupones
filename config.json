@@ -7,7 +7,7 @@
       "perfiles": [
         "vmenditto",
         "calamardoPobre",
-		"AhorrandoAndoAr"
+        "AhorrandoAndoAr"
       ],
       "consulta": "(cupon OR cupón OR cupones)",
       "debe_contener_alguna": [],
@@ -29,5 +29,11 @@
   "antiguedad_maxima_minutos": 120,
   "max_resultados_por_busqueda": 25,
   "max_notificaciones_por_ejecucion": 8,
-  "prioridad_notificacion": 4
+  "prioridad_notificacion": 4,
+  "demora_al_azar_segundos": 240,
+  "horario_descanso": {
+    "desde": "02:00",
+    "hasta": "07:00"
+  },
+  "zona_horaria": "America/Argentina/Buenos_Aires"
 }

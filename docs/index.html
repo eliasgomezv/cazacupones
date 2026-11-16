@@ -6,6 +6,12 @@
   <meta name="theme-color" content="#f4f1ea" media="(prefers-color-scheme: light)">
   <meta name="theme-color" content="#15140f" media="(prefers-color-scheme: dark)">
   <meta name="robots" content="noindex">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Cupones">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="icono-180.png">
   <title>Cazacupones</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>✂️</text></svg>">
   <style>
@@ -82,6 +88,19 @@
     .copiar.ok { background: var(--ok); color: #fff; }
     .abrir { background: var(--accent); color: var(--on-accent); width: 100%; }
 
+    .avisos { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; margin: 0 0 14px; }
+    .avisos h2 { margin: 0 0 6px; font-size: 16px; }
+    .avisos p, .avisos ol { margin: 6px 0; color: var(--muted); font-size: 14px; }
+    .avisos ol { padding-left: 20px; }
+    .avisos b { color: var(--ink); }
+    .avisos .fila { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+    .avisos textarea {
+      width: 100%; height: 96px; margin-top: 8px; font: 12px/1.35 var(--mono); color: var(--ink);
+      background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 8px; resize: vertical;
+    }
+    .secundario { background: transparent; color: var(--ink); border: 1px solid var(--line); }
+    .alerta { color: var(--accent); font-weight: 600; }
+    .ok-texto { color: var(--ok); font-weight: 600; }
     .vacio { text-align: center; color: var(--muted); padding: 48px 12px; border: 2px dashed var(--line); border-radius: 14px; }
     .vacio strong { display: block; color: var(--ink); font-size: 18px; margin-bottom: 6px; }
     footer { color: var(--muted); font-size: 13px; text-align: center; margin-top: 20px; }
@@ -93,9 +112,12 @@
     <div>
       <h1>Caza<span>cupones</span></h1>
       <p class="estado" id="estado">Cargando…</p>
+      <p class="estado" id="revision"></p>
     </div>
     <button class="recargar" id="recargar" type="button">Actualizar</button>
   </header>
+
+  <section class="avisos" id="avisos" hidden></section>
 
   <nav class="filtros" id="filtros" aria-label="Filtrar por búsqueda"></nav>
   <main id="lista"></main>
@@ -208,7 +230,7 @@
     }
   }
 
-  async function copiar(texto, boton) {
+  async function copiar(texto, boton, etiqueta = "Copiar") {
     try {
       await navigator.clipboard.writeText(texto);
     } catch {
@@ -217,7 +239,7 @@
       document.body.appendChild(ta); ta.select(); document.execCommand("copy"); ta.remove();
     }
     boton.textContent = "¡Copiado!"; boton.classList.add("ok");
-    setTimeout(() => { boton.textContent = "Copiar"; boton.classList.remove("ok"); }, 1600);
+    setTimeout(() => { boton.textContent = etiqueta; boton.classList.remove("ok"); }, 1600);
   }
 
   document.addEventListener("click", (e) => {
@@ -231,6 +253,143 @@
   setInterval(cargar, RECARGA_MS);
   setInterval(pintar, 60 * 1000);
   cargar();
+
+  // ---------------------------------------------------------- notificaciones
+  const CLAVE_LOCAL = "cazacupones_push";
+  const esIOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  const instalada = window.matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+  const soportaPush = "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+
+  function leerLocal() { try { return JSON.parse(localStorage.getItem(CLAVE_LOCAL)); } catch { return null; } }
+  function guardarLocal(v) { try { localStorage.setItem(CLAVE_LOCAL, JSON.stringify(v)); } catch {} }
+
+  function b64url(bytes) {
+    let s = ""; for (const b of bytes) s += String.fromCharCode(b);
+    return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  }
+
+  function panelAvisos(html) { const el = $("avisos"); el.innerHTML = html; el.hidden = false; }
+
+  function mostrarSecreto(datos, recien) {
+    panelAvisos(`
+      <h2>${recien ? "¡Listo! Falta un paso" : '<span class="ok-texto">Notificaciones activadas</span> en este celular'}</h2>
+      <p>${recien ? "Copiá este texto y guardalo en GitHub para que los avisos lleguen a este celular:" : "Si todavía no lo hiciste, guardá este texto en GitHub:"}</p>
+      <textarea id="secreto" readonly>${escapar(JSON.stringify(datos))}</textarea>
+      <ol>
+        <li>En tu repo: <b>Settings → Secrets and variables → Actions</b>.</li>
+        <li>Creá (o editá) el secreto <b>WEBPUSH</b> y pegá el texto.</li>
+        <li>Probalo en <b>Actions → Buscar cupones → Run workflow</b> marcando la prueba.</li>
+      </ol>
+      <div class="fila">
+        <button class="boton copiar" type="button" id="copiarSecreto" style="margin-left:0">Copiar texto</button>
+        <button class="boton secundario" type="button" id="regenerar">Volver a activar</button>
+      </div>`);
+    $("copiarSecreto").onclick = (e) => copiar($("secreto").value, e.currentTarget, "Copiar texto");
+    $("regenerar").onclick = activarAvisos;
+  }
+
+  async function activarAvisos() {
+    const permiso = await Notification.requestPermission(); // tiene que ser lo primero tras el toque
+    if (permiso !== "granted") {
+      panelAvisos(`<h2>Notificaciones bloqueadas</h2><p>Habilitalas en <b>Ajustes → Notificaciones → Cupones</b> y volvé a intentar.</p>`);
+      return;
+    }
+    try {
+      const reg = await navigator.serviceWorker.register("sw.js");
+      await navigator.serviceWorker.ready;
+      const vieja = await reg.pushManager.getSubscription();
+      if (vieja) await vieja.unsubscribe();
+      // Par de claves propio de este celular: la privada solo queda en tu secreto de GitHub.
+      const par = await crypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, ["sign", "verify"]);
+      const publica = new Uint8Array(await crypto.subtle.exportKey("raw", par.publicKey));
+      const privada = await crypto.subtle.exportKey("jwk", par.privateKey);
+      const sus = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: publica });
+      const datos = {
+        dispositivo: esIOS ? "iPhone" : (/Android/.test(navigator.userAgent) ? "Android" : "Navegador"),
+        clave: privada.d,
+        suscripcion: sus.toJSON(),
+      };
+      guardarLocal(datos);
+      mostrarSecreto(datos, true);
+    } catch (e) {
+      panelAvisos(`<h2>No se pudo activar</h2><p>${escapar(e.message || e)}</p>
+        <div class="fila"><button class="boton copiar" type="button" id="activar" style="margin-left:0">Reintentar</button></div>`);
+      $("activar").onclick = activarAvisos;
+    }
+  }
+
+  async function iniciarAvisos() {
+    if (!soportaPush) {
+      if (esIOS && !instalada) {
+        panelAvisos(`<h2>Recibí los avisos en el iPhone</h2><ol>
+          <li>Tocá <b>Compartir</b> (el cuadrado con la flecha) en Safari.</li>
+          <li>Elegí <b>Agregar a inicio</b>.</li>
+          <li>Abrí <b>Cupones</b> desde ese ícono y activá las notificaciones ahí.</li></ol>`);
+      }
+      return; // en otros navegadores sin soporte, no mostramos nada
+    }
+    const reg = await navigator.serviceWorker.register("sw.js").catch(() => null);
+    const sus = reg && await reg.pushManager.getSubscription();
+    const guardado = leerLocal();
+    if (sus && guardado && Notification.permission === "granted") {
+      mostrarSecreto(guardado, false);
+      // ya está todo: lo dejamos plegado para no ocupar lugar
+      $("avisos").innerHTML = `<div class="fila" style="margin:0;align-items:center;justify-content:space-between">
+        <span><span class="ok-texto">●</span> Notificaciones activadas</span>
+        <button class="boton secundario" type="button" id="verSecreto">Ver texto para GitHub</button></div>`;
+      $("verSecreto").onclick = () => mostrarSecreto(guardado, false);
+      return;
+    }
+    panelAvisos(`<h2>Avisos en este celular</h2>
+      <p>Te llega una notificación cada vez que aparece un cupón nuevo.</p>
+      <div class="fila"><button class="boton copiar" type="button" id="activar" style="margin-left:0">Activar notificaciones</button></div>`);
+    $("activar").onclick = activarAvisos;
+  }
+  iniciarAvisos();
+
+  // ------------------------------------------------- última revisión (GitHub)
+  const repo = (() => {
+    const m = location.hostname.match(/^([^.]+)\.github\.io$/);
+    const nombre = location.pathname.split("/").filter(Boolean)[0];
+    return m && nombre ? `${m[1]}/${nombre}` : null;
+  })();
+  let descanso = null;
+
+  function enDescanso(d) {
+    if (!d || !d.desde || !d.hasta) return false;
+    const partes = new Intl.DateTimeFormat("es-AR", { timeZone: "America/Argentina/Buenos_Aires", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(new Date());
+    const ahora = (+partes.find((x) => x.type === "hour").value) * 60 + (+partes.find((x) => x.type === "minute").value);
+    const aMin = (t) => { const [h, m] = t.split(":").map(Number); return h * 60 + m; };
+    const desde = aMin(d.desde), hasta = aMin(d.hasta);
+    return desde <= hasta ? ahora >= desde && ahora < hasta : ahora >= desde || ahora < hasta;
+  }
+
+  async function cargarRevision() {
+    if (!repo) return;
+    try {
+      if (descanso === null) {
+        const c = await fetch(`https://raw.githubusercontent.com/${repo}/main/config.json?t=${Date.now()}`).then((r) => r.json()).catch(() => ({}));
+        descanso = c.horario_descanso || {};
+      }
+      const r = await fetch(`https://api.github.com/repos/${repo}/actions/workflows/buscar.yml/runs?per_page=1&exclude_pull_requests=true`);
+      if (!r.ok) return;
+      const run = (await r.json()).workflow_runs?.[0];
+      const el = $("revision");
+      if (!run) { el.textContent = "Todavía no corrió ninguna búsqueda"; return; }
+      const minutos = (Date.now() - new Date(run.run_started_at || run.created_at)) / 60000;
+      let texto = `Última revisión ${haceCuanto(run.run_started_at || run.created_at)}`;
+      let alerta = false;
+      if (run.status !== "completed") texto += " · buscando ahora";
+      else if (run.conclusion === "failure") { texto += " · falló (mirá Actions)"; alerta = true; }
+      if (enDescanso(descanso)) texto += ` · en descanso hasta las ${descanso.hasta}`;
+      else if (minutos > 30) { texto += " · está demorada"; alerta = true; }
+      el.textContent = texto;
+      el.className = "estado" + (alerta ? " alerta" : "");
+    } catch {}
+  }
+  cargarRevision();
+  setInterval(cargarRevision, RECARGA_MS);
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) cargarRevision(); });
 </script>
 </body>
 </html>
